@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <sys/socket.h>
+#include <vector>
 
 #include <esp_http_server.h>
 #include <esp_log.h>
@@ -12,12 +13,20 @@
 #include <esp_tls_crypto.h>
 #include <nvs.h>
 
+#include "fcch_connmgr/cm.h"
 #include "fcch_connmgr/cm_conf.h"
 #include "fcch_connmgr/cm_net.h"
 #include "fcch_connmgr/cm_util.h"
 #include "cm_admin.h"
 #include "cm_http.h"
 #include "cm_nvs.h"
+
+struct cm_http_action {
+    const char *name;
+    cm_http_action_description_func *description;
+    cm_http_action_func *function;
+    httpd_uri_t uri;
+};
 
 static const char *TAG = "cm_http";
 static const size_t CM_HTTP_MAX_USER_FORM_POST_DATA = 512;
@@ -28,6 +37,8 @@ extern const char cm_http_styles_end[]   asm("_binary_styles_html_end");
 
 static const char *cm_http_auth_header;
 static const char *cm_http_www_authenticate;
+static httpd_handle_t cm_http_server = NULL;
+static std::vector<cm_http_action> cm_http_actions;
 
 static inline void cm_http_chunks_done(httpd_req_t *req) {
     httpd_resp_send_chunk(req, NULL, 0);
@@ -314,6 +325,8 @@ static esp_err_t cm_http_home_get_handler(httpd_req_t *req) {
     cm_http_send_page_top(req, "Home", NULL);
     cm_http_send_nav_button(req, "/conf", "", "Configuration");
     cm_http_send_action_form(req, "/reboot", "Reboot");
+    for (auto& action : cm_http_actions)
+        cm_http_send_action_form(req, action.uri.uri, action.description());
     cm_http_send_page_bottom(req);
     cm_http_chunks_done(req);
     return ESP_OK;
@@ -692,16 +705,15 @@ static void cm_http_init_auth() {
 }
 
 void cm_http_init() {
-    httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 20;
     config.lru_purge_enable = true;
 
     cm_http_init_auth();
 
-    ESP_ERROR_CHECK(httpd_start(&server, &config));
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &cm_http_home_get_uri));
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &cm_http_conf_get_uri));
+    ESP_ERROR_CHECK(httpd_start(&cm_http_server, &config));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &cm_http_home_get_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &cm_http_conf_get_uri));
 
     for (
         cm_conf_page *page = cm_conf_pages;
@@ -720,7 +732,7 @@ void cm_http_init() {
         conf_page_get_uri->method = HTTP_GET;
         conf_page_get_uri->handler= conf_page_get_handler;
         conf_page_get_uri->user_ctx = page;
-        ESP_ERROR_CHECK(httpd_register_uri_handler(server, conf_page_get_uri));
+        ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, conf_page_get_uri));
 
         httpd_uri_t *conf_page_post_uri =
             (httpd_uri_t *)malloc(sizeof *conf_page_post_uri);
@@ -730,15 +742,56 @@ void cm_http_init() {
         conf_page_post_uri->method = HTTP_POST;
         conf_page_post_uri->handler = conf_page_post_handler;
         conf_page_post_uri->user_ctx = page;
-        ESP_ERROR_CHECK(httpd_register_uri_handler(server, conf_page_post_uri));
+        ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, conf_page_post_uri));
     }
 
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &cm_http_reboot_post_uri));
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &cm_http_export_get_uri));
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &cm_http_import_get_uri));
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &cm_http_import_post_uri));
-    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &cm_http_wipe_post_uri));
-    ESP_ERROR_CHECK(httpd_register_err_handler(server, HTTPD_404_NOT_FOUND,
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &cm_http_reboot_post_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &cm_http_export_get_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &cm_http_import_get_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &cm_http_import_post_uri));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &cm_http_wipe_post_uri));
+    ESP_ERROR_CHECK(httpd_register_err_handler(cm_http_server, HTTPD_404_NOT_FOUND,
         cm_http_404_error_handler));
     ESP_LOGI(TAG, "Listening on port %d", config.server_port);
+}
+
+
+static esp_err_t cm_http_action_post_handler(httpd_req_t *req) {
+    CM_HTTP_CHECK_AUTH;
+    cm_http_action *action = (cm_http_action *)req->user_ctx;
+
+    action->function();
+
+    ESP_LOGI(TAG, "Redirecting");
+    const char status[] = "302 Found";
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_send(req, status, 0);
+    return ESP_OK;
+}
+
+void cm_http_register_home_action(
+    const char *name,
+    cm_http_action_description_func *description,
+    cm_http_action_func *function
+) {
+    char *uri;
+    int sz = asprintf(&uri, "/action/%s", name);
+    assert(sz > 0);
+    assert(uri != nullptr);
+
+    cm_http_actions.push_back(cm_http_action{
+        .name = name,
+        .description = description,
+        .function = function,
+        .uri = {
+            .uri = uri,
+            .method = HTTP_POST,
+            .handler = cm_http_action_post_handler,
+            .user_ctx = NULL,
+        },
+    });
+    auto &action = cm_http_actions.back();
+    action.uri.user_ctx = &action;
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &action.uri));
 }
