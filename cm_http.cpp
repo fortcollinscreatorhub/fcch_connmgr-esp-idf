@@ -706,7 +706,7 @@ static void cm_http_init_auth() {
 
 void cm_http_init() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 20;
+    config.max_uri_handlers = 24;
     config.lru_purge_enable = true;
 
     cm_http_init_auth();
