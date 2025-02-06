@@ -38,7 +38,7 @@ extern const char cm_http_styles_end[]   asm("_binary_styles_html_end");
 static const char *cm_http_auth_header;
 static const char *cm_http_www_authenticate;
 static httpd_handle_t cm_http_server = NULL;
-static std::vector<cm_http_action> cm_http_actions;
+static std::vector<cm_http_action *> cm_http_actions;
 
 static inline void cm_http_chunks_done(httpd_req_t *req) {
     httpd_resp_send_chunk(req, NULL, 0);
@@ -325,8 +325,8 @@ static esp_err_t cm_http_home_get_handler(httpd_req_t *req) {
     cm_http_send_page_top(req, "Home", NULL);
     cm_http_send_nav_button(req, "/conf", "", "Configuration");
     cm_http_send_action_form(req, "/reboot", "Reboot");
-    for (auto& action : cm_http_actions)
-        cm_http_send_action_form(req, action.uri.uri, action.description());
+    for (auto *action : cm_http_actions)
+        cm_http_send_action_form(req, action->uri.uri, action->description());
     cm_http_send_page_bottom(req);
     cm_http_chunks_done(req);
     return ESP_OK;
@@ -758,7 +758,8 @@ void cm_http_init() {
 
 static esp_err_t cm_http_action_post_handler(httpd_req_t *req) {
     CM_HTTP_CHECK_AUTH;
-    cm_http_action *action = (cm_http_action *)req->user_ctx;
+    size_t action_idx = (size_t)req->user_ctx;
+    auto *action = cm_http_actions.at(action_idx);
 
     action->function();
 
@@ -780,7 +781,7 @@ void cm_http_register_home_action(
     assert(sz > 0);
     assert(uri != nullptr);
 
-    cm_http_actions.push_back(cm_http_action{
+    auto *action = new cm_http_action{
         .name = name,
         .description = description,
         .function = function,
@@ -790,8 +791,8 @@ void cm_http_register_home_action(
             .handler = cm_http_action_post_handler,
             .user_ctx = NULL,
         },
-    });
-    auto &action = cm_http_actions.back();
-    action.uri.user_ctx = &action;
-    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &action.uri));
+    };
+    action->uri.user_ctx = (void*)(cm_http_actions.size());
+    cm_http_actions.push_back(action);
+    ESP_ERROR_CHECK(httpd_register_uri_handler(cm_http_server, &action->uri));
 }
