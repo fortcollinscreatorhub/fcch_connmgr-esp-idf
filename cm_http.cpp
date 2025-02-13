@@ -456,6 +456,7 @@ static esp_err_t cm_http_reboot_post_handler(httpd_req_t *req) {
     cm_http_chunks_done(req);
 
     vTaskDelay(250 / portTICK_PERIOD_MS);
+    cm_net_notify_upcoming_restart();
     esp_restart();
 
     return ESP_OK;

@@ -40,6 +40,7 @@ static bool cm_net_sta_connected = false;
 static bool cm_net_sta_has_ip = false;
 static bool cm_net_pending_action_sta_connect = false;
 static bool cm_net_any_sta_defined = false;
+static bool cm_net_restart_pending = false;
 static size_t cm_net_sta_index;
 static TimerHandle_t cm_net_timer_ap_on;
 static TimerHandle_t cm_net_timer_ap_off;
@@ -204,6 +205,8 @@ static void cm_net_wifi_connect(bool first_time) {
 }
 
 static void cm_net_maybe_start_pending_event_sta() {
+    if (cm_net_restart_pending)
+        return;
     if (!cm_net_any_sta_defined)
         return;
     if (cm_net_sta_connected)
@@ -464,6 +467,10 @@ void cm_net_init() {
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID,
         &cm_net_ip_event_handler, NULL));
     ESP_ERROR_CHECK(esp_wifi_start());
+}
+
+void cm_net_notify_upcoming_restart() {
+    cm_net_restart_pending = true;
 }
 
 cm_net_ap_info cm_net_get_ap_info() {
