@@ -39,6 +39,7 @@ void cm_nvs_init() {
 
 void cm_nvs_wipe() {
     ESP_ERROR_CHECK(nvs_flash_erase());
+    cm_nvs_init();
 }
 
 esp_err_t cm_nvs_export(std::stringstream &config) {
@@ -116,7 +117,7 @@ static esp_err_t cm_nvs_import_line(char *line) {
     char *value = p;
 
     if (!strcmp(type, "str")) {
-        cm_nvs_write_str(name, value);
+        return cm_nvs_write_str(name, value);
     } else if (!strcmp(type, "u32")) {
         uint32_t u32 = strtoull(value, NULL, 10);
         return cm_nvs_write_u32(name, u32);
