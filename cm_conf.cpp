@@ -120,27 +120,28 @@ esp_err_t cm_conf_read_as_str(cm_conf_item *item, const char **p_val) {
         break;
     }
 
-    uint32_t u32;
-    uint16_t u16;
     switch (item->type) {
-    case CM_CONF_ITEM_TYPE_U32:
-        u32 = cm_conf_read_u32_or_default(item);
-        break;
-    case CM_CONF_ITEM_TYPE_U16:
-        u16 = cm_conf_read_u16_or_default(item);
-        u32 = u16;
-        break;
-    default:
-        assert(false);
-        break;
+        case CM_CONF_ITEM_TYPE_U32: {
+            uint32_t u32 = cm_conf_read_u32_or_default(item);
+            char *ret = NULL;
+            asprintf(&ret, "%lu", u32);
+            assert(ret != NULL);
+            *p_val = ret;
+            return ESP_OK;
+        }
+        case CM_CONF_ITEM_TYPE_U16: {
+            uint16_t u16 = cm_conf_read_u16_or_default(item);
+            char *ret = NULL;
+            asprintf(&ret, "%lu", (uint32_t)u16);
+            assert(ret != NULL);
+            *p_val = ret;
+            return ESP_OK;
+        }
+        default: {
+            assert(false);
+            return ESP_ERR_INVALID_ARG;
+        }
     }
-    size_t buf_len = 32;
-    char *buf = (char *)malloc(buf_len);
-    if (buf == NULL)
-        return ESP_FAIL;
-    snprintf(buf, buf_len, "%lu", u32);
-    *p_val = buf;
-    return ESP_OK;
 }
 
 esp_err_t cm_conf_write_as_str(cm_conf_item *item, const char *str) {
@@ -153,16 +154,26 @@ esp_err_t cm_conf_write_as_str(cm_conf_item *item, const char *str) {
         break;
     }
 
-    uint32_t u32 = strtoull(str, NULL, 10);
-    ESP_LOGD(TAG, "Write %lu -> %s", u32, item->full_name);
     switch (item->type) {
-    case CM_CONF_ITEM_TYPE_U32:
-        return cm_nvs_write_u32(item->full_name, u32);
-    case CM_CONF_ITEM_TYPE_U16:
-        return cm_nvs_write_u16(item->full_name, u32);
-    default:
-        assert(false);
-        break;
+        case CM_CONF_ITEM_TYPE_U32:
+        case CM_CONF_ITEM_TYPE_U16: {
+            uint32_t u32 = strtoull(str, NULL, 10);
+            ESP_LOGD(TAG, "Write %lu -> %s", u32, item->full_name);
+            switch (item->type) {
+            case CM_CONF_ITEM_TYPE_U32:
+                return cm_nvs_write_u32(item->full_name, u32);
+            case CM_CONF_ITEM_TYPE_U16:
+                return cm_nvs_write_u16(item->full_name, u32);
+            default:
+                assert(false);
+                break;
+            }
+            break;
+        }
+        default: {
+            assert(false);
+            break;
+        }
     }
 
     return ESP_OK;
