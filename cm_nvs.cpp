@@ -75,6 +75,21 @@ esp_err_t cm_nvs_read_u16(const char* name, uint16_t *p_val) {
     return nvs_get_u16(cm_nvs_handle, name, p_val);
 }
 
+esp_err_t cm_nvs_read_float(const char* name, float *p_val) {
+    size_t length = 0;
+    esp_err_t err = nvs_get_blob(cm_nvs_handle, name, NULL, &length);
+    if (err != ESP_OK)
+        return err;
+    if (length != sizeof(float))
+        return ESP_ERR_INVALID_SIZE;
+
+    err = nvs_get_blob(cm_nvs_handle, name, p_val, &length);
+    if (err != ESP_OK)
+        return err;
+
+    return ESP_OK;
+}
+
 esp_err_t cm_nvs_write_str(const char* name, const char *val) {
     return nvs_set_str(cm_nvs_handle, name, val);
 }
@@ -85,4 +100,8 @@ esp_err_t cm_nvs_write_u32(const char* name, uint32_t val) {
 
 esp_err_t cm_nvs_write_u16(const char* name, uint16_t val) {
     return nvs_set_u16(cm_nvs_handle, name, val);
+}
+
+esp_err_t cm_nvs_write_float(const char* name, float val) {
+    return nvs_set_blob(cm_nvs_handle, name, &val, sizeof(val));
 }

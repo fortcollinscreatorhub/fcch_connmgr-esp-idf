@@ -14,6 +14,7 @@ enum cm_conf_item_type {
     CM_CONF_ITEM_TYPE_PASS,
     CM_CONF_ITEM_TYPE_U32,
     CM_CONF_ITEM_TYPE_U16,
+    CM_CONF_ITEM_TYPE_FLOAT,
 };
 
 struct cm_conf_item;
@@ -22,6 +23,7 @@ union cm_conf_p_val {
     const char **str;
     uint32_t *u32;
     uint16_t *u16;
+    float *f;
 };
 
 typedef void cm_conf_default_func(cm_conf_item *item, cm_conf_p_val p_val_u);
@@ -52,6 +54,7 @@ extern cm_conf_page *cm_conf_pages;
 extern cm_conf_default_func cm_conf_default_str_empty;
 extern cm_conf_default_func cm_conf_default_u32_0;
 extern cm_conf_default_func cm_conf_default_u16_0;
+extern cm_conf_default_func cm_conf_default_f_0;
 
 extern void cm_conf_init();
 extern void cm_conf_register_page(cm_conf_page *page);

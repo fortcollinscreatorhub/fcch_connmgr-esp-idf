@@ -28,6 +28,10 @@ void cm_conf_default_u16_0(cm_conf_item *item, cm_conf_p_val p_val_u) {
     *p_val_u.u16 = 0;
 }
 
+void cm_conf_default_f_0(cm_conf_item *item, cm_conf_p_val p_val_u) {
+    *p_val_u.f = 0;
+}
+
 void cm_conf_init() {
 }
 
@@ -77,6 +81,16 @@ static uint16_t cm_conf_read_u16_or_default(cm_conf_item *item) {
     return u16;
 }
 
+static float cm_conf_read_float_or_default(cm_conf_item *item) {
+    float f;
+    esp_err_t err = cm_nvs_read_float(item->full_name, &f);
+    if (err != ESP_OK)
+        item->default_func(item, {.f = &f});
+    if (item->replace_invalid_value != NULL)
+        item->replace_invalid_value(item, {.f = &f});
+    return f;
+}
+
 void cm_conf_load() {
     for (
         cm_conf_page *page = cm_conf_pages;
@@ -101,6 +115,10 @@ void cm_conf_load() {
             case CM_CONF_ITEM_TYPE_U16:
                 *(item->p_val.u16) = cm_conf_read_u16_or_default(item);
                 ESP_LOGD(TAG, "value %lu", (uint32_t)*(item->p_val.u16));
+                break;
+            case CM_CONF_ITEM_TYPE_FLOAT:
+                *(item->p_val.f) = cm_conf_read_float_or_default(item);
+                ESP_LOGD(TAG, "value %f", *(item->p_val.f));
                 break;
             default:
                 assert(false);
@@ -137,6 +155,14 @@ esp_err_t cm_conf_read_as_str(cm_conf_item *item, const char **p_val) {
             *p_val = ret;
             return ESP_OK;
         }
+        case CM_CONF_ITEM_TYPE_FLOAT: {
+            float f = cm_conf_read_float_or_default(item);
+            char *ret = NULL;
+            asprintf(&ret, "%f", f);
+            assert(ret != NULL);
+            *p_val = ret;
+            return ESP_OK;
+        }
         default: {
             assert(false);
             return ESP_ERR_INVALID_ARG;
@@ -169,6 +195,11 @@ esp_err_t cm_conf_write_as_str(cm_conf_item *item, const char *str) {
                 break;
             }
             break;
+        }
+        case CM_CONF_ITEM_TYPE_FLOAT: {
+            float f = strtof(str, NULL);
+            ESP_LOGD(TAG, "Write %f -> %s", f, item->full_name);
+            return cm_nvs_write_float(item->full_name, f);
         }
         default: {
             assert(false);
@@ -210,6 +241,11 @@ esp_err_t cm_conf_export(std::stringstream &config) {
                 case CM_CONF_ITEM_TYPE_U16: {
                     uint16_t u16 = cm_conf_read_u16_or_default(item);
                     config << "u16 " << u16;
+                    break;
+                }
+                case CM_CONF_ITEM_TYPE_FLOAT: {
+                    float f = cm_conf_read_float_or_default(item);
+                    config << "float " << f;
                     break;
                 }
                 default: {
@@ -259,6 +295,9 @@ static esp_err_t cm_conf_import_line(char *line) {
         uint32_t u32 = strtoull(value, NULL, 10);
         uint16_t u16 = (uint16_t)u32;
         return cm_nvs_write_u16(name, u16);
+    } else if (!strcmp(type, "float")) {
+        float f = strtof(value, NULL);
+        return cm_nvs_write_float(name, f);
     } else {
         ESP_LOGW(TAG, "Unknown field type %s", type);
         return ESP_FAIL;
