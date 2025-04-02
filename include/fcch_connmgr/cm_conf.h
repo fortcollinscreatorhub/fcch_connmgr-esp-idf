@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <sstream>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -58,3 +59,7 @@ extern void cm_conf_load();
 
 extern esp_err_t cm_conf_read_as_str(cm_conf_item *item, const char **p_val);
 extern esp_err_t cm_conf_write_as_str(cm_conf_item *item, const char *str);
+
+extern void cm_conf_wipe();
+extern esp_err_t cm_conf_export(std::stringstream &config);
+extern esp_err_t cm_conf_import(char *config);

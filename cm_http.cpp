@@ -20,7 +20,6 @@
 #include "cm_admin.h"
 #include "cm_app_version.h"
 #include "cm_http.h"
-#include "cm_nvs.h"
 
 struct cm_http_action {
     const char *name;
@@ -479,7 +478,7 @@ static esp_err_t cm_http_export_get_handler(httpd_req_t *req) {
     CM_HTTP_CHECK_AUTH;
 
     std::stringstream configss;
-    esp_err_t err = cm_nvs_export(configss);
+    esp_err_t err = cm_conf_export(configss);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Config export failed: %d", err);
         return ESP_FAIL;
@@ -585,7 +584,7 @@ static esp_err_t cm_http_import_post_handler(httpd_req_t *req) {
     }
     *config_end = '\0';
 
-    esp_err_t err = cm_nvs_import(config);
+    esp_err_t err = cm_conf_import(config);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Config import failed: %d", err);
         return ESP_FAIL;
@@ -610,7 +609,7 @@ static const httpd_uri_t cm_http_import_post_uri = {
 static esp_err_t cm_http_wipe_post_handler(httpd_req_t *req) {
     CM_HTTP_CHECK_AUTH;
 
-    cm_nvs_wipe();
+    cm_conf_wipe();
 
     ESP_LOGI(TAG, "Redirecting");
     const char status[] = "302 Found";
